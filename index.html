@@ -5,43 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nexus AI Trader | AI-Powered Market Analysis</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              'gray-900': '#121212',
-              'gray-800': '#1e1e1e',
-              'gray-700': '#2a2a2a',
-              'gray-600': '#3a3a3a',
-              'gray-400': '#9ca3af',
-              'gray-200': '#e5e7eb',
-            },
-            animation: {
-              'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'ping': 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
-            },
-            keyframes: {
-              ping: {
-                '75%, 100%': {
-                  transform: 'scale(2)',
-                  opacity: '0',
-                },
-              },
-            },
-          },
-        },
-      }
-    </script>
   <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
+    "vite": "https://aistudiocdn.com/vite@^7.1.11",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.4",
     "@capacitor/cli": "https://aistudiocdn.com/@capacitor/cli@^7.4.3"
   }
 }
@@ -50,7 +23,7 @@
 </head>
   <body class="bg-gray-900 text-gray-200">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/index.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -62,5 +35,6 @@
         });
       }
     </script>
-  </body>
+  <script type="module" src="/index.tsx"></script>
+</body>
 </html>
