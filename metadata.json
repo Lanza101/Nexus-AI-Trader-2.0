@@ -1,0 +1,5 @@
+{
+  "name": "Nexus AI Trader",
+  "description": "Nexus AI Trader: An AI-powered trading dashboard that visualizes complex market data and generates institutional-grade analysis using the Gemini API. For educational and simulation purposes only.",
+  "requestFramePermissions": []
+}
