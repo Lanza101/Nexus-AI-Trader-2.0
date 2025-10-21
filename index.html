@@ -4,36 +4,63 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nexus AI Trader | AI-Powered Market Analysis</title>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
-    "vite": "https://aistudiocdn.com/vite@^7.1.11",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.4",
-    "@capacitor/cli": "https://aistudiocdn.com/@capacitor/cli@^7.4.3"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
+
+    <!-- ✅ App Icons -->
+    <link rel="icon" type="image/png" href="/src/assets/icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/icon.png" />
+
+    <!-- ✅ PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ✅ Theme Colors -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="background-color" content="#0f172a" />
+
+    <!-- ✅ SEO -->
+    <meta
+      name="description"
+      content="Nexus AI Trader — AI-driven trading insights and market predictions to enhance your strategy with smart analytics."
+    />
+
+    <!-- ✅ Import Maps -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
+        "vite": "https://aistudiocdn.com/vite@^7.1.11",
+        "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.4",
+        "@capacitor/cli": "https://aistudiocdn.com/@capacitor/cli@^7.4.3"
+      }
+    }
+    </script>
+
+    <link rel="stylesheet" href="/index.css" />
+  </head>
+
   <body class="bg-gray-900 text-gray-200">
     <div id="root"></div>
+
+    <!-- ✅ React App Entry -->
     <script type="module" src="/src/index.tsx"></script>
+
+    <!-- ✅ Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(registration => {
-            console.log('Service Worker registered: ', registration);
-          }).catch(registrationError => {
-            console.log('Service Worker registration failed: ', registrationError);
-          });
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then(registration => {
+              console.log('Service Worker registered:', registration);
+            })
+            .catch(error => {
+              console.log('Service Worker registration failed:', error);
+            });
         });
       }
     </script>
-  <script type="module" src="/index.tsx"></script>
-</body>
+  </body>
 </html>
