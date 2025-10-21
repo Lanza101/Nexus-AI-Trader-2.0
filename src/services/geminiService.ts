@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { MarketData, BotConfig, AIAnalysisResult, AdjustmentFeedback, OptimizedTradePlan, FootprintDataPoint } from '../types';
+import { MarketData, BotConfig, AIAnalysisResult, AdjustmentFeedback, OptimizedTradePlan, FootprintDataPoint, TradeDebriefResult } from '../types';
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -36,7 +37,7 @@ export const getMarketAnalysis = async (marketData: MarketData, config: BotConfi
     return "Error: API_KEY is not configured. Please set it up in your deployment environment.";
   }
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+
   const { price, candleHistory, cumulativeVolumeDelta, vwap, emas, tradingSession, openInterest, orderBook, liquidationLevels } = marketData;
   
   const recentCandles = candleHistory.slice(-5);
@@ -287,5 +288,78 @@ export const getOptimizedTradePlan = async (
     } catch (error) {
         console.error("Error processing Gemini optimization:", error);
         return "AI failed to generate an optimized plan. Please check your comment for clarity.";
+    }
+};
+
+const debriefSchema = {
+    type: Type.OBJECT,
+    properties: {
+        outcome: { type: Type.STRING, enum: ['Win', 'Loss', 'Invalidated', 'In Progress'], description: "The result of the trade: 'Win' (TP hit), 'Loss' (SL hit), 'Invalidated' (price moved away without entry), or 'In Progress'." },
+        explanation: { type: Type.STRING, description: "A concise, one-sentence explanation of what happened to the trade idea and why, based on the subsequent price action." },
+        keyLesson: { type: Type.STRING, description: "A one-sentence, actionable trading lesson a human can learn from this specific outcome." },
+    },
+    required: ['outcome', 'explanation', 'keyLesson'],
+};
+
+export const getTradeDebrief = async (
+    originalAnalysis: AIAnalysisResult,
+    marketData: MarketData
+): Promise<TradeDebriefResult | string> => {
+    if (!process.env.API_KEY) {
+        return "Error: API_KEY is not configured.";
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const { price, candleHistory } = marketData;
+    const priceDecimals = price > 100 ? 2 : 4;
+    const subsequentCandles = candleHistory.slice(-15); // Analyze the last 15 candles since the signal
+    
+    const subsequentCandlesSummary = subsequentCandles.map(c => 
+        `{O: ${c.open.toFixed(priceDecimals)}, H: ${c.high.toFixed(priceDecimals)}, L: ${c.low.toFixed(priceDecimals)}, C: ${c.close.toFixed(priceDecimals)}}`
+    ).join(', ');
+
+    const prompt = `
+        You are a trading coach AI. Your task is to debrief a trade idea that was generated earlier, providing a clear outcome and a key learning lesson.
+
+        Original Trade Idea:
+        - Direction: ${originalAnalysis.tradeDirection === 'NEUTRAL' ? originalAnalysis.speculativeDirection : originalAnalysis.tradeDirection}
+        - Entry Price: $${originalAnalysis.entryPrice.toFixed(priceDecimals)}
+        - Stop Loss: $${originalAnalysis.stopLoss.toFixed(priceDecimals)}
+        - Take Profit: $${originalAnalysis.takeProfit.toFixed(priceDecimals)}
+        - Initial Rationale: "${originalAnalysis.keyObservation}"
+
+        Subsequent Market Action:
+        - The current price is $${price.toFixed(priceDecimals)}.
+        - The 15 candles AFTER the signal was generated are: ${subsequentCandlesSummary}
+
+        Your Analytical Process:
+        1.  **Determine the Outcome**: Based on the subsequent candles, did price first hit the 'Take Profit' or the 'Stop Loss' level?
+            - If TP was hit first, the outcome is 'Win'.
+            - If SL was hit first, the outcome is 'Loss'.
+            - If price moved significantly away from the entry without triggering it, the setup is 'Invalidated'.
+            - If neither SL nor TP was hit and the price is still near entry, it's 'In Progress'.
+        2.  **Explain the "Why"**: Look at the candle data. Was there a strong momentum candle that pushed price to the target? Was there a sharp reversal? Was the initial rationale confirmed or proven wrong by the subsequent order flow? Provide a single, clear sentence.
+        3.  **Extract a Key Lesson**: This is the most important part. What is the single most valuable lesson a trader can learn from observing this price action? Avoid generic advice. It must be specific to this trade.
+            - Example Good Lesson: "Lesson: Even with strong bearish signals, failing to break below the session's VWAP often indicates absorption and can lead to a sharp reversal."
+            - Example Bad Lesson: "Lesson: Always use a stop loss."
+
+        Now, generate the JSON object with your debrief.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: debriefSchema,
+          }
+        });
+        
+        const text = response.text.trim();
+        return JSON.parse(text) as TradeDebriefResult;
+    } catch (error) {
+        console.error("Error processing Gemini debrief:", error);
+        return "AI failed to generate a trade debrief. The market action may have been too complex.";
     }
 };

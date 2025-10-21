@@ -118,3 +118,9 @@ export interface OptimizedTradePlan {
   newPositionSize: number;
   explanation: string;
 }
+
+export interface TradeDebriefResult {
+    outcome: 'Win' | 'Loss' | 'Invalidated' | 'In Progress';
+    explanation: string;
+    keyLesson: string;
+}

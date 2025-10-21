@@ -1,11 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { MarketData, BotConfig, AIAnalysisResult, AdjustmentFeedback, OptimizedTradePlan, FootprintDataPoint } from '../types';
-
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -38,6 +33,11 @@ const getPocFromFootprint = (footprint: FootprintDataPoint[] | undefined): numbe
 }
 
 export const getMarketAnalysis = async (marketData: MarketData, config: BotConfig): Promise<AIAnalysisResult | string> => {
+  if (!process.env.API_KEY) {
+    return "Error: API_KEY is not configured. Please set it up in your deployment environment.";
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const { price, candleHistory, cumulativeVolumeDelta, vwap, emas, tradingSession, openInterest, orderBook, liquidationLevels } = marketData;
   
   const recentCandles = candleHistory.slice(-5);
@@ -158,6 +158,11 @@ export const getTradeAdjustmentAnalysis = async (
   newTakeProfit: number,
   marketData: MarketData
 ): Promise<AdjustmentFeedback | string> => {
+  if (!process.env.API_KEY) {
+    return "Error: API_KEY is not configured.";
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const { price, support, resistance, vwap, emas } = marketData;
   const priceDecimals = price > 100 ? 2 : 4;
 
@@ -228,6 +233,11 @@ export const getOptimizedTradePlan = async (
     marketData: MarketData,
     config: BotConfig
 ): Promise<OptimizedTradePlan | string> => {
+    if (!process.env.API_KEY) {
+        return "Error: API_KEY is not configured.";
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const { price, support, resistance, vwap, emas } = marketData;
     const priceDecimals = price > 100 ? 2 : 4;
     

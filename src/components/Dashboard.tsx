@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { MarketData, Trade, BotConfig, Candle, FootprintDataPoint, TradeSignal, AIAnalysisResult } from '../types';
-import { getMarketAnalysis } from '../services/geminiService';
+import { MarketData, Trade, BotConfig, Candle, FootprintDataPoint, TradeSignal, AIAnalysisResult, TradeDebriefResult } from '../types';
+import { getMarketAnalysis, getTradeDebrief } from '../services/geminiService';
 import { generateSimulatedMarketData, generateMockAnalysis } from '../services/marketSimulator';
 import { MetricCard } from './MetricCard';
-import { AIEngineIcon, ChartIcon, FootprintIcon, ArrowUpIcon, ArrowDownIcon, NeutralIcon, WebhookIcon, XCircleIcon, CheckCircleIcon } from './icons';
+import { AIEngineIcon, ChartIcon, ArrowUpIcon, ArrowDownIcon, NeutralIcon, WebhookIcon, XCircleIcon, CheckCircleIcon, LightbulbIcon } from './icons';
 import { AdvancedPriceChart } from './AdvancedPriceChart';
 import { CandlestickVolumeProfileChart } from './CandlestickVolumeProfileChart';
 import { ControlPanel } from './ControlPanel';
@@ -18,6 +17,7 @@ const CANDLE_INTERVAL_MS = 5000;
 const PRICE_STEP = 0.5;
 const ANALYSIS_COOLDOWN_S = 90;
 const FALLBACK_RETRY_S = 90;
+const DEBRIEF_CANDLE_DELAY = 12; // Enable debrief after 12 * 5s = 1 minute
 const BINANCE_ASSETS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error' | 'simulated';
@@ -44,7 +44,6 @@ const initialMarketData: MarketData = {
 
 interface AggTrade { p: string; q: string; T: number; m: boolean; }
 
-// Helper for live simulation
 const assetVolatility: { [key: string]: number } = {
   EURUSD: 0.0005, GBPUSD: 0.0006, USDJPY: 0.1,
   XAUUSD: 15, XAGUSD: 0.5,
@@ -66,6 +65,39 @@ function generateRandomCandle(previousCandle: Candle, volatility: number): Candl
   return { time, open, high, low, close, volume, buyVolume, sellVolume, footprint };
 }
 
+const StatusIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => {
+    const statusMap: { [key in ConnectionStatus]: { color: string, text: string, pulse: boolean } } = {
+        connecting: { color: 'bg-yellow-500', text: 'Connecting...', pulse: true },
+        connected: { color: 'bg-green-500', text: 'Live', pulse: false },
+        disconnected: { color: 'bg-gray-500', text: 'Offline', pulse: false },
+        error: { color: 'bg-red-500', text: 'Error', pulse: false },
+        simulated: { color: 'bg-indigo-500', text: 'Simulated', pulse: false }
+    };
+
+    const currentStatus = statusMap[status];
+
+    return (
+        <span className="flex items-center ml-2" title={currentStatus.text}>
+            <span className={`relative flex h-2 w-2`}>
+                {currentStatus.pulse && <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${currentStatus.color} opacity-75`}></span>}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${currentStatus.color}`}></span>
+            </span>
+        </span>
+    );
+};
+
+const Notification: React.FC<{ notification: NotificationType | null }> = ({ notification }) => {
+    if (!notification) return null;
+    const isError = notification.type === 'error';
+    const Icon = isError ? XCircleIcon : CheckCircleIcon;
+
+    return (
+        <div className={`fixed top-5 right-5 z-50 flex items-center p-4 mb-4 text-sm rounded-lg shadow-lg ${isError ? 'bg-red-900/90 text-red-300 border border-red-700' : 'bg-green-900/90 text-green-300 border border-green-700'}`} role="alert">
+            <Icon className="h-5 w-5 mr-3"/>
+            <span className="font-medium">{notification.message}</span>
+        </div>
+    );
+};
 
 export const Dashboard: React.FC = () => {
   const [marketData, setMarketData] = useState<MarketData>(initialMarketData);
@@ -78,6 +110,11 @@ export const Dashboard: React.FC = () => {
   const [initialAnalysisDone, setInitialAnalysisDone] = useState(false);
   const [isInFallbackMode, setIsInFallbackMode] = useState(false);
   const [fallbackRetryTimer, setFallbackRetryTimer] = useState<number | null>(null);
+  const [analysisCandleCount, setAnalysisCandleCount] = useState(0);
+
+  const [tradeDebrief, setTradeDebrief] = useState<TradeDebriefResult | null>(null);
+  const [debriefStatus, setDebriefStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [debriefMessage, setDebriefMessage] = useState('');
 
   const [analysisCooldown, setAnalysisCooldown] = useState(0);
   const [latestSignal, setLatestSignal] = useState<TradeSignal | null>(null);
@@ -126,7 +163,10 @@ export const Dashboard: React.FC = () => {
     currentCandleRef.current = null;
     setAnalysisCooldown(0);
     setAiAnalysis(null);
+    setTradeDebrief(null);
+    setDebriefStatus('idle');
     setAnalysisStatus('idle');
+    setAnalysisCandleCount(0);
     setAnalysisMessage(`Data source for ${config.asset} is being configured...`);
     setInitialAnalysisDone(false);
     setIsInFallbackMode(false);
@@ -150,12 +190,11 @@ export const Dashboard: React.FC = () => {
 
             if (!currentCandleRef.current) {
                 const lastClose = lastClosePriceRef.current > 0 ? lastClosePriceRef.current : price;
-                lastClosePriceRef.current = lastClose; // Ensure last close is set for finalizeCandle
+                lastClosePriceRef.current = lastClose;
                 currentCandleRef.current = { time: Date.now(), open: lastClose, high: price, low: price, close: price, volume: 0, buyVolume: 0, sellVolume: 0 };
             }
 
             const candle = currentCandleRef.current;
-            // First trade in a new candle sets the open price
             if (candle.volume === 0) {
               candle.open = price;
               candle.high = price;
@@ -190,7 +229,6 @@ export const Dashboard: React.FC = () => {
     }
   }, [config.asset]);
 
-  // UI update interval for high-frequency data
   useEffect(() => {
     if (connectionStatus !== 'connected') return;
     const uiUpdateInterval = setInterval(() => {
@@ -205,11 +243,9 @@ export const Dashboard: React.FC = () => {
     return () => clearInterval(uiUpdateInterval);
   }, [connectionStatus]);
   
-  // Interval for order flow simulation in live mode
   useEffect(() => {
     if (connectionStatus !== 'connected') return;
     const orderFlowInterval = setInterval(() => {
-      // Simulate new order flow data based on current price
       const simulatedFlow = generateSimulatedMarketData(config.asset);
       setMarketData(prev => ({
         ...prev,
@@ -219,11 +255,15 @@ export const Dashboard: React.FC = () => {
         tradingSession: simulatedFlow.tradingSession,
         openInterestHistory: [...prev.openInterestHistory.slice(-99), { time: Date.now(), value: simulatedFlow.openInterest }]
       }));
-    }, 5000); // Update every 5 seconds
+    }, 5000);
     return () => clearInterval(orderFlowInterval);
   }, [connectionStatus, config.asset]);
 
   const finalizeCandle = useCallback(() => {
+    if (analysisStatus === 'success') {
+      setAnalysisCandleCount(prev => prev + 1);
+    }
+
     if (connectionStatus !== 'connected') {
         return;
     }
@@ -231,41 +271,20 @@ export const Dashboard: React.FC = () => {
     const candleInProgress = currentCandleRef.current;
     const lastPrice = candleInProgress?.open ?? lastClosePriceRef.current;
 
-    // If there's no candle being built and no last known price, we can't do anything.
-    // This only happens at the very start before any trades.
-    if (!candleInProgress && lastPrice <= 0) {
-        return;
-    }
+    if (!candleInProgress && lastPrice <= 0) { return; }
 
     let candleToAdd: Candle;
-
-    // If there were trades in the interval, finalize the candle in progress.
     if (candleInProgress && candleInProgress.volume > 0) {
         const footprintData: FootprintDataPoint[] = [];
         currentFootprintRef.current.forEach((val, key) => footprintData.push({ price: key, ...val }));
-        candleToAdd = { 
-            ...candleInProgress, 
-            time: candleInProgress.time, // Use start time of interval
-            footprint: footprintData
-        };
+        candleToAdd = { ...candleInProgress, time: candleInProgress.time, footprint: footprintData };
     } else {
-        // No trades occurred in the interval. Create a placeholder candle.
         if (lastPrice > 0) {
             candleToAdd = {
-                time: Date.now(),
-                open: lastPrice,
-                high: lastPrice,
-                low: lastPrice,
-                close: lastPrice,
-                volume: 0,
-                buyVolume: 0,
-                sellVolume: 0,
-                footprint: []
+                time: Date.now(), open: lastPrice, high: lastPrice, low: lastPrice, close: lastPrice,
+                volume: 0, buyVolume: 0, sellVolume: 0, footprint: []
             };
-        } else {
-            // Should be rare, but if we have no price, we can't create a candle.
-            return;
-        }
+        } else { return; }
     }
     
     lastClosePriceRef.current = candleToAdd.close;
@@ -292,37 +311,25 @@ export const Dashboard: React.FC = () => {
             setLow24h(Math.min(...newHistory.map(c => c.low)));
         }
 
-        return { 
-            ...prevData, 
-            candleHistory: newHistory, 
-            emas: newEmas, 
-            currentFootprint: candleToAdd.footprint || []
-        };
+        return { ...prevData, candleHistory: newHistory, emas: newEmas, currentFootprint: candleToAdd.footprint || [] };
     });
     
-    currentCandleRef.current = {
-        time: Date.now(),
-        open: candleToAdd.close,
-        high: candleToAdd.close,
-        low: candleToAdd.close,
-        close: candleToAdd.close,
-        volume: 0,
-        buyVolume: 0,
-        sellVolume: 0,
-    };
+    currentCandleRef.current = { time: Date.now(), open: candleToAdd.close, high: candleToAdd.close, low: candleToAdd.close, close: candleToAdd.close, volume: 0, buyVolume: 0, sellVolume: 0, };
     currentFootprintRef.current.clear();
-  }, [connectionStatus]);
+  }, [connectionStatus, analysisStatus]);
 
   useEffect(() => {
     const candleInterval = setInterval(finalizeCandle, CANDLE_INTERVAL_MS);
     return () => clearInterval(candleInterval);
   }, [finalizeCandle]);
 
-  // New Effect for Live Simulation
   useEffect(() => {
     if (connectionStatus !== 'simulated') return;
 
     const simulationInterval = setInterval(() => {
+      if (analysisStatus === 'success') {
+          setAnalysisCandleCount(prev => prev + 1);
+      }
       setMarketData(prevData => {
         if (prevData.candleHistory.length === 0) return prevData;
 
@@ -359,12 +366,8 @@ export const Dashboard: React.FC = () => {
         const newAsks = Array.from({ length: 20 }, (_, i) => ({ price: newCandle.close + (i + 1) * priceStep, size: Math.random() * 50 }));
 
         return {
-          ...prevData,
-          price: newCandle.close,
-          candleHistory: newHistory,
-          emas: newEmas,
-          cumulativeVolumeDelta: newCVD,
-          openInterest: newOI,
+          ...prevData, price: newCandle.close, candleHistory: newHistory, emas: newEmas,
+          cumulativeVolumeDelta: newCVD, openInterest: newOI,
           openInterestHistory: [...prevData.openInterestHistory.slice(-99), { time: newCandle.time, value: newOI }],
           orderBook: { bids: newBids, asks: newAsks },
         };
@@ -372,7 +375,7 @@ export const Dashboard: React.FC = () => {
     }, CANDLE_INTERVAL_MS);
 
     return () => clearInterval(simulationInterval);
-  }, [connectionStatus, config.asset]);
+  }, [connectionStatus, config.asset, analysisStatus]);
 
   useEffect(() => {
     if (connectionStatus !== 'connected') { setTradesPerMinute(0); return; };
@@ -410,6 +413,7 @@ export const Dashboard: React.FC = () => {
   
   const handleAnalysisRequest = useCallback(async () => {
     if (analysisStatus === 'loading' || (analysisCooldown > 0 && fallbackRetryTimer === null) ) return;
+    setTradeDebrief(null); setDebriefStatus('idle'); setAnalysisCandleCount(0);
 
     if (isInFallbackMode) {
         setAnalysisStatus('loading'); setAiAnalysis(null); setAnalysisMessage('Generating simulated analysis...');
@@ -447,19 +451,41 @@ export const Dashboard: React.FC = () => {
         setIsInFallbackMode(false); setFallbackRetryTimer(null); setAnalysisStatus('success');
         setAiAnalysis(result); setAnalysisMessage('');
         if (result.tradeDirection !== 'NEUTRAL') {
-            setLatestSignal({ asset: config.asset, action: result.tradeDirection, price: result.entryPrice, size: result.positionSize, leverage: config.leverage, timestamp: new Date().toISOString() });
+            setLatestSignal({ 
+                asset: config.asset, 
+                action: result.tradeDirection === 'LONG' ? 'BUY' : 'SELL', 
+                price: result.entryPrice, 
+                size: result.positionSize, 
+                leverage: config.leverage, 
+                timestamp: new Date().toISOString() 
+            });
         }
     }
     if (!isInFallbackMode) { setAnalysisCooldown(ANALYSIS_COOLDOWN_S); }
   }, [marketData, config, connectionStatus, analysisStatus, analysisCooldown, isInFallbackMode, fallbackRetryTimer]);
   
+  const handleDebriefRequest = useCallback(async () => {
+    if (!aiAnalysis || debriefStatus === 'loading' || marketData.candleHistory.length < 15) return;
+    
+    setDebriefStatus('loading');
+    setDebriefMessage('AI is reviewing the trade outcome...');
+    const result = await getTradeDebrief(aiAnalysis, marketData);
+
+    if (typeof result === 'string') {
+        setDebriefStatus('error');
+        setDebriefMessage(result);
+    } else {
+        setDebriefStatus('success');
+        setTradeDebrief(result);
+    }
+  }, [aiAnalysis, marketData]);
+
   useEffect(() => {
     if (!initialAnalysisDone && analysisStatus === 'idle' && analysisCooldown === 0 && marketData.candleHistory.length >= 10) {
       handleAnalysisRequest();
       setInitialAnalysisDone(true);
     }
   }, [connectionStatus, marketData.candleHistory.length, initialAnalysisDone, analysisStatus, analysisCooldown, handleAnalysisRequest]);
-
 
   const getButtonText = () => {
     if (analysisStatus === 'loading') return 'Analyzing...';
@@ -470,87 +496,19 @@ export const Dashboard: React.FC = () => {
   
   const isButtonDisabled = analysisStatus === 'loading' || (analysisCooldown > 0 && !isInFallbackMode && fallbackRetryTimer === null);
 
-  const StatusIndicator = () => {
-    const statusMap: { [key in ConnectionStatus]: { color: string, text: string, pulse: boolean } } = {
-        connecting: { color: 'bg-yellow-500', text: 'Connecting...', pulse: true },
-        connected: { color: 'bg-green-500', text: 'Live', pulse: false },
-        disconnected: { color: 'bg-gray-500', text: 'Offline', pulse: false },
-        error: { color: 'bg-red-500', text: 'Error', pulse: false },
-        simulated: { color: 'bg-indigo-500', text: 'Simulated', pulse: false }
-    };
-
-    const currentStatus = statusMap[connectionStatus];
-
-    return (
-        <span className="flex items-center ml-2" title={currentStatus.text}>
-            <span className={`relative flex h-2 w-2`}>
-                {currentStatus.pulse && <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${currentStatus.color} opacity-75`}></span>}
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${currentStatus.color}`}></span>
-            </span>
-        </span>
-    );
-  };
-
-  const AnalysisResultDisplay = ({ analysis }: { analysis: AIAnalysisResult }) => {
-    const directionColor = analysis.tradeDirection === 'LONG' ? 'bg-green-600' : analysis.tradeDirection === 'SHORT' ? 'bg-red-600' : 'bg-gray-600';
-    const confidenceColor = analysis.confidence === 'High' ? 'text-green-400' : analysis.confidence === 'Medium' ? 'text-yellow-400' : 'text-gray-300';
-    const priceDecimals = analysis.entryPrice > 100 ? 2 : 4;
-
-    return (
-        <div className="space-y-4 text-sm">
-            <div className={`p-3 rounded-lg text-center font-bold text-lg text-white flex items-center justify-center ${directionColor}`}>
-                {analysis.tradeDirection === 'LONG' && <ArrowUpIcon className="mr-2 h-5 w-5" />}
-                {analysis.tradeDirection === 'SHORT' && <ArrowDownIcon className="mr-2 h-5 w-5" />}
-                {analysis.tradeDirection === 'NEUTRAL' && <NeutralIcon className="mr-2 h-5 w-5" />}
-                {analysis.tradeDirection}
-            </div>
-            <div className="bg-gray-900/50 p-3 rounded-lg">
-                <p className="text-gray-400 font-semibold mb-1">Key Observation:</p>
-                <p className="text-gray-200">{analysis.keyObservation}</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div className="md:col-span-2 grid grid-cols-2 gap-x-4 gap-y-3">
-                    <div><p className="text-gray-400 text-xs">Confidence</p><p className={`font-semibold ${confidenceColor}`}>{analysis.confidence}</p></div>
-                    <div><p className="text-gray-400 text-xs">Entry Price</p><p className="font-mono text-white">${analysis.entryPrice.toFixed(priceDecimals)}</p></div>
-                    <div><p className="text-green-400 text-xs">Take Profit</p><p className="font-mono text-green-400 font-semibold">${analysis.takeProfit.toFixed(priceDecimals)}</p></div>
-                    <div><p className="text-red-400 text-xs">Stop Loss</p><p className="font-mono text-red-400 font-semibold">${analysis.stopLoss.toFixed(priceDecimals)}</p></div>
-                    <div className="col-span-2"><p className="text-gray-400 text-xs">Position Size</p><p className="font-mono text-white">{analysis.positionSize.toFixed(4)}</p></div>
-                </div>
-                <div className="md:col-span-3 space-y-3 bg-gray-900/50 p-3 rounded-lg">
-                     <div><p className="text-red-400 font-semibold text-xs mb-1">Stop Loss Rationale:</p><p className="text-gray-300">{analysis.stopLossJustification}</p></div>
-                     <div><p className="text-green-400 font-semibold text-xs mb-1">Take Profit Rationale:</p><p className="text-gray-300">{analysis.takeProfitJustification}</p></div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
   const formatAssetForDisplay = (asset: string) => {
     if (asset.includes('USDT')) return asset.replace('USDT', '/USDT');
     if (asset.length === 6) return `${asset.slice(0, 3)}/${asset.slice(3)}`;
     return asset;
   };
 
-  const Notification = () => {
-    if (!notification) return null;
-    const isError = notification.type === 'error';
-    const Icon = isError ? XCircleIcon : CheckCircleIcon;
-
-    return (
-        <div className={`fixed top-5 right-5 z-50 flex items-center p-4 mb-4 text-sm rounded-lg shadow-lg ${isError ? 'bg-red-900/90 text-red-300 border border-red-700' : 'bg-green-900/90 text-green-300 border border-green-700'}`} role="alert">
-            <Icon className="h-5 w-5 mr-3"/>
-            <span className="font-medium">{notification.message}</span>
-        </div>
-    );
-  };
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-      <Notification />
+      <Notification notification={notification} />
       <div className="lg:col-span-4 space-y-6">
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-            <MetricCard title={<div className="flex items-center"><span>{formatAssetForDisplay(config.asset)}</span><StatusIndicator /></div>} value={`$${(marketData.price ?? 0).toFixed(2)}`} change={marketData.price - previousPrice} changeType="value"/>
+            <MetricCard title={<div className="flex items-center"><span>{formatAssetForDisplay(config.asset)}</span><StatusIndicator status={connectionStatus} /></div>} value={`$${(marketData.price ?? 0).toFixed(2)}`} change={marketData.price - previousPrice} changeType="value"/>
             <MetricCard title="24h Volume" value={`$${((marketData.volume ?? 0) / 1_000_000).toFixed(2)}M`} />
             <MetricCard title="24h High" value={`$${(high24h ?? 0).toFixed(2)}`} />
             <MetricCard title="24h Low" value={`$${(low24h ?? 0).toFixed(2)}`} />
@@ -595,10 +553,30 @@ export const Dashboard: React.FC = () => {
                 <div className="flex-grow">
                     <div className="flex justify-between items-center mb-3">
                         <h2 className="text-xl font-semibold flex items-center"><AIEngineIcon className="mr-2"/>Gemini Trade Analysis</h2>
-                        <button onClick={handleAnalysisRequest} disabled={isButtonDisabled} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 text-sm">{getButtonText()}</button>
+                        <div className="flex items-center space-x-2">
+                           {aiAnalysis && analysisStatus === 'success' && (
+                            <button 
+                              onClick={handleDebriefRequest} 
+                              disabled={analysisCandleCount < DEBRIEF_CANDLE_DELAY || debriefStatus === 'loading'}
+                              className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 text-sm"
+                              title={analysisCandleCount < DEBRIEF_CANDLE_DELAY ? `Debrief available in ${DEBRIEF_CANDLE_DELAY - analysisCandleCount} candles` : 'Get AI Debrief'}
+                            >
+                              <LightbulbIcon className="h-4 w-4" />
+                            </button>
+                           )}
+                           <button onClick={handleAnalysisRequest} disabled={isButtonDisabled} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 text-sm">
+                                {getButtonText()}
+                           </button>
+                        </div>
                     </div>
-                    {analysisStatus === 'loading' ? <div className="text-center text-gray-400 space-y-2"><p>{analysisMessage}</p><div className="space-y-4 animate-pulse-fast mt-4"><div className="h-4 bg-gray-700 rounded w-3/4 mx-auto"></div><div className="h-8 bg-gray-700 rounded w-full"></div><div className="h-4 bg-gray-700 rounded w-1/2 mx-auto"></div></div></div>
-                    : analysisStatus === 'success' && aiAnalysis ? <AnalysisResultDisplay analysis={aiAnalysis} />
+                    {analysisStatus === 'loading' ? <AnalysisPlaceholder message={analysisMessage} isError={false} />
+                    : analysisStatus === 'success' && aiAnalysis ? 
+                        <div>
+                            <AnalysisResultDisplay analysis={aiAnalysis} />
+                            {debriefStatus === 'loading' && <div className="text-center text-indigo-400 mt-4">{debriefMessage}</div>}
+                            {debriefStatus === 'error' && <div className="text-center text-red-400 mt-4">{debriefMessage}</div>}
+                            {debriefStatus === 'success' && tradeDebrief && <TradeDebriefDisplay debrief={tradeDebrief} />}
+                        </div>
                     : <AnalysisPlaceholder message={analysisMessage} isError={analysisStatus === 'error'}/>}
                 </div>
             </div>
@@ -618,4 +596,55 @@ export const Dashboard: React.FC = () => {
       </div>
     </div>
   );
+};
+
+const TradeDebriefDisplay: React.FC<{ debrief: TradeDebriefResult }> = ({ debrief }) => {
+    const outcomeColor = debrief.outcome === 'Win' ? 'text-green-400' : debrief.outcome === 'Loss' ? 'text-red-400' : 'text-yellow-400';
+    return (
+        <div className="mt-4 border-t border-gray-700 pt-4 space-y-3 text-sm">
+            <h3 className="text-lg font-semibold text-white flex items-center"><LightbulbIcon className="mr-2 h-5 w-5"/>Trade Debrief</h3>
+            <div className="bg-gray-900/50 p-3 rounded-lg">
+                <p className="text-gray-400 font-semibold mb-1">Outcome: <span className={`font-bold ${outcomeColor}`}>{debrief.outcome}</span></p>
+                <p className="text-gray-200">{debrief.explanation}</p>
+            </div>
+            <div className="bg-indigo-900/40 p-3 rounded-lg border border-indigo-500/30">
+                <p className="text-indigo-400 font-semibold mb-1">Key Lesson:</p>
+                <p className="text-gray-200">{debrief.keyLesson}</p>
+            </div>
+        </div>
+    );
+}
+
+const AnalysisResultDisplay: React.FC<{ analysis: AIAnalysisResult }> = ({ analysis }) => {
+    const directionColor = analysis.tradeDirection === 'LONG' ? 'bg-green-600' : analysis.tradeDirection === 'SHORT' ? 'bg-red-600' : 'bg-gray-600';
+    const confidenceColor = analysis.confidence === 'High' ? 'text-green-400' : analysis.confidence === 'Medium' ? 'text-yellow-400' : 'text-gray-300';
+    const priceDecimals = analysis.entryPrice > 100 ? 2 : 4;
+
+    return (
+        <div className="space-y-4 text-sm">
+            <div className={`p-3 rounded-lg text-center font-bold text-lg text-white flex items-center justify-center ${directionColor}`}>
+                {analysis.tradeDirection === 'LONG' && <ArrowUpIcon className="mr-2 h-5 w-5" />}
+                {analysis.tradeDirection === 'SHORT' && <ArrowDownIcon className="mr-2 h-5 w-5" />}
+                {analysis.tradeDirection === 'NEUTRAL' && <NeutralIcon className="mr-2 h-5 w-5" />}
+                {analysis.tradeDirection}
+            </div>
+            <div className="bg-gray-900/50 p-3 rounded-lg">
+                <p className="text-gray-400 font-semibold mb-1">Key Observation:</p>
+                <p className="text-gray-200">{analysis.keyObservation}</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="md:col-span-2 grid grid-cols-2 gap-x-4 gap-y-3">
+                    <div><p className="text-gray-400 text-xs">Confidence</p><p className={`font-semibold ${confidenceColor}`}>{analysis.confidence}</p></div>
+                    <div><p className="text-gray-400 text-xs">Entry Price</p><p className="font-mono text-white">${analysis.entryPrice.toFixed(priceDecimals)}</p></div>
+                    <div><p className="text-green-400 text-xs">Take Profit</p><p className="font-mono text-green-400 font-semibold">${analysis.takeProfit.toFixed(priceDecimals)}</p></div>
+                    <div><p className="text-red-400 text-xs">Stop Loss</p><p className="font-mono text-red-400 font-semibold">${analysis.stopLoss.toFixed(priceDecimals)}</p></div>
+                    <div className="col-span-2"><p className="text-gray-400 text-xs">Position Size</p><p className="font-mono text-white">{analysis.positionSize.toFixed(4)}</p></div>
+                </div>
+                <div className="md:col-span-3 space-y-3 bg-gray-900/50 p-3 rounded-lg">
+                     <div><p className="text-red-400 font-semibold text-xs mb-1">Stop Loss Rationale:</p><p className="text-gray-300">{analysis.stopLossJustification}</p></div>
+                     <div><p className="text-green-400 font-semibold text-xs mb-1">Take Profit Rationale:</p><p className="text-gray-300">{analysis.takeProfitJustification}</p></div>
+                </div>
+            </div>
+        </div>
+    );
 };
