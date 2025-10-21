@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dashboard } from './components/Dashboard';
+import InstallAppBanner from './components/InstallAppBanner'; // <--- ADD THIS IMPORT
 
 const App: React.FC = () => {
   return (
@@ -13,6 +14,9 @@ const App: React.FC = () => {
       <main className="p-4 md:p-8">
         <Dashboard />
       </main>
+      
+      {/* ADD THE BANNER COMPONENT HERE, outside of <main> */}
+      <InstallAppBanner /> 
     </div>
   );
 };
