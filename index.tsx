@@ -1,3 +1,6 @@
+// ADD THIS LINE: Imports the main CSS file to resolve the 404 error
+import './index.css'; 
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -14,9 +17,7 @@ root.render(
   </React.StrictMode>
 );
 
-// <--- ADD THIS CODE BELOW THE root.render() CALL
-
-// PWA: Explicitly register the Service Worker
+// PWA: Explicitly register the Service Worker (This part is correct)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(registration => {

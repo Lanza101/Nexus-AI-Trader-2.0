@@ -15,7 +15,7 @@ const App: React.FC = () => {
         <Dashboard />
       </main>
       
-      {/* ADD THE BANNER COMPONENT HERE, outside of <main> */}
+      {/* ADD THE BANNER COMPONENT HERE */}
       <InstallAppBanner /> 
     </div>
   );
