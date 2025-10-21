@@ -8,37 +8,52 @@ export default function InstallAppBanner() {
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
 
   useEffect(() => {
+    // Check if the device is iOS (iPhone, iPad, iPod)
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     setIsIOS(iOS);
 
+    // Check if the PWA is already installed
     const isInstalled = window.matchMedia('(display-mode: standalone)').matches;
     
     if (!isInstalled) {
       const handler = (e: any) => {
+        // Prevent Chrome 76 and later from showing the mini-infobar.
         e.preventDefault();
+        // Stash the event so it can be triggered later.
         setDeferredPrompt(e);
+        // Show our custom banner
         setShowBanner(true);
       };
 
+      // Listen for the event that indicates the app is installable
       window.addEventListener('beforeinstallprompt', handler);
 
+      // On iOS, the 'beforeinstallprompt' event doesn't fire, so we just show the instructions banner after a delay
       if (iOS) {
         setTimeout(() => setShowBanner(true), 2000);
       }
 
+      // Cleanup function
       return () => window.removeEventListener('beforeinstallprompt', handler);
     }
   }, []);
 
   const handleInstallClick = async () => {
     if (isIOS) {
+      // For iOS, show the custom instructions modal
       setShowIOSInstructions(true);
     } else if (deferredPrompt) {
+      // Show the native browser installation prompt
       deferredPrompt.prompt();
+      // Wait for the user to respond to the prompt
       const { outcome } = await deferredPrompt.userChoice;
+      
+      // If the user accepts, hide the banner
       if (outcome === 'accepted') {
         setShowBanner(false);
       }
+      
+      // We can only call prompt() once, so reset the event
       setDeferredPrompt(null);
     }
   };
@@ -51,7 +66,7 @@ export default function InstallAppBanner() {
 
   return (
     <>
-      {/* Main Install Banner */}
+      {/* Main Install Banner (fixed at the bottom) */}
       <div className="fixed bottom-0 left-0 right-0 z-50 p-4">
         <div className="max-w-md mx-auto bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl shadow-2xl p-4 border-2 border-white/20 relative">
           <button
