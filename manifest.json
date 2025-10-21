@@ -1,0 +1,16 @@
+{
+  "name": "Nexus AI Trader",
+  "short_name": "Nexus Trader",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "AI-powered trading insights and predictions for smarter market decisions.",
+  "icons": [
+    {
+      "src": "/src/assets/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
