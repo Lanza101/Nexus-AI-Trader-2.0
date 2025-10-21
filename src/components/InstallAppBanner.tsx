@@ -8,12 +8,15 @@ export default function InstallAppBanner() {
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
 
   useEffect(() => {
+    // Check for iOS/PWA environment
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     setIsIOS(iOS);
 
+    // Check if the app is already installed
     const isInstalled = window.matchMedia('(display-mode: standalone)').matches;
     
     if (!isInstalled) {
+      // Event listener for the standard PWA prompt
       const handler = (e: any) => {
         e.preventDefault();
         setDeferredPrompt(e);
@@ -22,6 +25,7 @@ export default function InstallAppBanner() {
 
       window.addEventListener('beforeinstallprompt', handler);
 
+      // Show banner automatically on iOS after a delay since there is no beforeinstallprompt event
       if (iOS) {
         setTimeout(() => setShowBanner(true), 2000);
       }
@@ -32,8 +36,10 @@ export default function InstallAppBanner() {
 
   const handleInstallClick = async () => {
     if (isIOS) {
+      // For iOS, show the custom instructions modal
       setShowIOSInstructions(true);
     } else if (deferredPrompt) {
+      // For standard PWA devices (Android, Desktop), trigger the native prompt
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
@@ -162,13 +168,3 @@ export default function InstallAppBanner() {
     </>
   );
 }
-```
-
----
-
-### **STEP 5: Commit the file**
-
-1. Scroll down to "Commit new file"
-2. In the commit message box, type:
-```
-   Add install app banner component
