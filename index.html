@@ -4,24 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nexus AI Trader | AI-Powered Market Analysis</title>
-
     <!-- ✅ App Icons -->
     <link rel="icon" type="image/png" href="/src/assets/icon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/icon.png" />
-
+    <link rel="apple-touch-icon" sizes="180x180" href="/app-icon-192.png" />
     <!-- ✅ PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
-
     <!-- ✅ Theme Colors -->
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#1e3a5f" />
     <meta name="background-color" content="#0f172a" />
-
+    <!-- ✅ PWA Meta Tags (ADD THESE) -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Nexus AI" />
     <!-- ✅ SEO -->
     <meta
       name="description"
       content="Nexus AI Trader — AI-driven trading insights and market predictions to enhance your strategy with smart analytics."
     />
-
     <!-- ✅ Import Maps -->
     <script type="importmap">
     {
@@ -37,16 +37,12 @@
       }
     }
     </script>
-
     <link rel="stylesheet" href="/index.css" />
   </head>
-
   <body class="bg-gray-900 text-gray-200">
     <div id="root"></div>
-
     <!-- ✅ React App Entry -->
     <script type="module" src="/src/index.tsx"></script>
-
     <!-- ✅ Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
