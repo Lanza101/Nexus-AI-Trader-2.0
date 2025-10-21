@@ -33,10 +33,10 @@ const getPocFromFootprint = (footprint: FootprintDataPoint[] | undefined): numbe
 }
 
 export const getMarketAnalysis = async (marketData: MarketData, config: BotConfig): Promise<AIAnalysisResult | string> => {
-  if (!process.env.API_KEY) {
+  if (!process.env.NEXT_PUBLIC_API_KEY) {
     return "Error: API_KEY is not configured. Please set it up in your deployment environment.";
   }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
 
   const { price, candleHistory, cumulativeVolumeDelta, vwap, emas, tradingSession, openInterest, orderBook, liquidationLevels } = marketData;
   
@@ -158,10 +158,10 @@ export const getTradeAdjustmentAnalysis = async (
   newTakeProfit: number,
   marketData: MarketData
 ): Promise<AdjustmentFeedback | string> => {
-  if (!process.env.API_KEY) {
+  if (!process.env.NEXT_PUBLIC_API_KEY) {
     return "Error: API_KEY is not configured.";
   }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
 
   const { price, support, resistance, vwap, emas } = marketData;
   const priceDecimals = price > 100 ? 2 : 4;
@@ -233,10 +233,10 @@ export const getOptimizedTradePlan = async (
     marketData: MarketData,
     config: BotConfig
 ): Promise<OptimizedTradePlan | string> => {
-    if (!process.env.API_KEY) {
+    if (!process.env.NEXT_PUBLIC_API_KEY) {
         return "Error: API_KEY is not configured.";
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
     
     const { price, support, resistance, vwap, emas } = marketData;
     const priceDecimals = price > 100 ? 2 : 4;
@@ -305,10 +305,10 @@ export const getTradeDebrief = async (
     originalAnalysis: AIAnalysisResult,
     marketData: MarketData
 ): Promise<TradeDebriefResult | string> => {
-    if (!process.env.API_KEY) {
+    if (!process.env.NEXT_PUBLIC_API_KEY) {
         return "Error: API_KEY is not configured.";
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
     
     const { price, candleHistory } = marketData;
     const priceDecimals = price > 100 ? 2 : 4;
