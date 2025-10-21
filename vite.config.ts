@@ -5,7 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // ⭐️ FIX: Expose the environment variable using the correct Vite syntax
-    'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(process.env.VITE_GEMINI_API_KEY)
-  }
+    // ⭐️ This line forces Vercel's environment variable (process.env) 
+    // to be injected into the Vite environment variable (import.meta.env) 
+    // during the build, allowing your client code to see it.
+    'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(process.env.VITE_GEMINI_API_KEY),
+  },
 });
